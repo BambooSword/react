@@ -1,39 +1,55 @@
 'use strict';
 
-var path = require('path');
+const path = require('path');
 
-var babel = require('babel-core');
-var coffee = require('coffee-script');
+const babel = require('@babel/core');
+const coffee = require('coffee-script');
 
-var tsPreprocessor = require('./typescript/preprocessor');
-var createCacheKeyFunction = require('fbjs-scripts/jest/createCacheKeyFunction');
+const tsPreprocessor = require('./typescript/preprocessor');
+const createCacheKeyFunction = require('fbjs-scripts/jest/createCacheKeyFunction');
 
-// Use require.resolve to be resilient to file moves, npm updates, etc
-var pathToBabel = path.join(
-  require.resolve('babel-core'),
-  '..',
+const pathToBabel = path.join(
+  require.resolve('@babel/core'),
+  '../..',
   'package.json'
 );
-var pathToBabelPluginDevWithCode = require.resolve(
-  '../error-codes/replace-invariant-error-codes'
+const pathToBabelPluginDevWithCode = require.resolve(
+  '../error-codes/transform-error-messages'
 );
-var pathToBabelPluginAsyncToGenerator = require.resolve(
-  'babel-plugin-transform-async-to-generator'
+const pathToBabelPluginWrapWarning = require.resolve(
+  '../babel/wrap-warning-with-env-check'
 );
-var pathToBabelrc = path.join(__dirname, '..', '..', '.babelrc');
-var pathToErrorCodes = require.resolve('../error-codes/codes.json');
+const pathToBabelPluginAsyncToGenerator = require.resolve(
+  '@babel/plugin-transform-async-to-generator'
+);
+const pathToTransformInfiniteLoops = require.resolve(
+  '../babel/transform-prevent-infinite-loops'
+);
+const pathToBabelrc = path.join(__dirname, '..', '..', 'babel.config.js');
+const pathToErrorCodes = require.resolve('../error-codes/codes.json');
 
-var babelOptions = {
+const babelOptions = {
   plugins: [
     // For Node environment only. For builds, Rollup takes care of ESM.
-    require.resolve('babel-plugin-transform-es2015-modules-commonjs'),
+    require.resolve('@babel/plugin-transform-modules-commonjs'),
 
     pathToBabelPluginDevWithCode,
+    pathToBabelPluginWrapWarning,
+
     // Keep stacks detailed in tests.
     // Don't put this in .babelrc so that we don't embed filenames
     // into ReactART builds that include JSX.
     // TODO: I have not verified that this actually works.
-    require.resolve('babel-plugin-transform-react-jsx-source'),
+    require.resolve('@babel/plugin-transform-react-jsx-source'),
+
+    pathToTransformInfiniteLoops,
+
+    // This optimization is important for extremely performance-sensitive (e.g. React source).
+    // It's okay to disable it for tests.
+    [
+      require.resolve('@babel/plugin-transform-block-scoping'),
+      {throwIfClosureRequired: false},
+    ],
   ],
   retainLines: true,
 };
@@ -46,10 +62,13 @@ module.exports = {
     if (filePath.match(/\.ts$/) && !filePath.match(/\.d\.ts$/)) {
       return tsPreprocessor.compile(src, filePath);
     }
+    if (filePath.match(/\.json$/)) {
+      return src;
+    }
     if (!filePath.match(/\/third_party\//)) {
       // for test files, we also apply the async-await transform, but we want to
       // make sure we don't accidentally apply that transform to product code.
-      var isTestFile = !!filePath.match(/\/__tests__\//);
+      const isTestFile = !!filePath.match(/\/__tests__\//);
       return babel.transform(
         src,
         Object.assign(
@@ -63,7 +82,7 @@ module.exports = {
               }
             : {}
         )
-      ).code;
+      );
     }
     return src;
   },
@@ -73,6 +92,8 @@ module.exports = {
     pathToBabel,
     pathToBabelrc,
     pathToBabelPluginDevWithCode,
+    pathToBabelPluginWrapWarning,
+    pathToTransformInfiniteLoops,
     pathToErrorCodes,
   ]),
 };

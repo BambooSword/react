@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,19 +9,19 @@
 
 'use strict';
 
-var PropTypes;
-var React;
-var ReactDOM;
+let PropTypes;
+let React;
+let ReactDOM;
 
 describe('ReactES6Class', () => {
-  var container;
-  var freeze = function(expectation) {
+  let container;
+  const freeze = function(expectation) {
     Object.freeze(expectation);
     return expectation;
   };
-  var Inner;
-  var attachedListener = null;
-  var renderedName = null;
+  let Inner;
+  let attachedListener = null;
+  let renderedName = null;
 
   beforeEach(() => {
     PropTypes = require('prop-types');
@@ -43,7 +43,7 @@ describe('ReactES6Class', () => {
   });
 
   function test(element, expectedTag, expectedClassName) {
-    var instance = ReactDOM.render(element, container);
+    const instance = ReactDOM.render(element, container);
     expect(container.firstChild).not.toBeNull();
     expect(container.firstChild.tagName).toBe(expectedTag);
     expect(container.firstChild.className).toBe(expectedClassName);
@@ -56,17 +56,19 @@ describe('ReactES6Class', () => {
   });
 
   it('throws if no render function is defined', () => {
-    spyOnDev(console, 'error');
     class Foo extends React.Component {}
-    expect(() => ReactDOM.render(<Foo />, container)).toThrow();
-
-    if (__DEV__) {
-      expect(console.error.calls.count()).toBe(1);
-      expect(console.error.calls.argsFor(0)[0]).toBe(
+    expect(() =>
+      expect(() => ReactDOM.render(<Foo />, container)).toThrow(),
+    ).toWarnDev(
+      [
+        // A failed component renders twice in DEV
         'Warning: Foo(...): No `render` method found on the returned component ' +
           'instance: you may have forgotten to define `render`.',
-      );
-    }
+        'Warning: Foo(...): No `render` method found on the returned component ' +
+          'instance: you may have forgotten to define `render`.',
+      ],
+      {withoutStack: true},
+    );
   });
 
   it('renders a simple stateless component with prop', () => {
@@ -108,9 +110,131 @@ describe('ReactES6Class', () => {
         return <span className={this.state.bar} />;
       }
     }
-    var instance = test(<Foo initialValue="foo" />, 'DIV', 'foo');
+    const instance = test(<Foo initialValue="foo" />, 'DIV', 'foo');
     instance.changeState();
     test(<Foo />, 'SPAN', 'bar');
+  });
+
+  it('sets initial state with value returned by static getDerivedStateFromProps', () => {
+    class Foo extends React.Component {
+      state = {};
+      static getDerivedStateFromProps(nextProps, prevState) {
+        return {
+          foo: nextProps.foo,
+          bar: 'bar',
+        };
+      }
+      render() {
+        return <div className={`${this.state.foo} ${this.state.bar}`} />;
+      }
+    }
+    test(<Foo foo="foo" />, 'DIV', 'foo bar');
+  });
+
+  it('warns if getDerivedStateFromProps is not static', () => {
+    class Foo extends React.Component {
+      getDerivedStateFromProps() {
+        return {};
+      }
+      render() {
+        return <div />;
+      }
+    }
+    expect(() => ReactDOM.render(<Foo foo="foo" />, container)).toWarnDev(
+      'Foo: getDerivedStateFromProps() is defined as an instance method ' +
+        'and will be ignored. Instead, declare it as a static method.',
+      {withoutStack: true},
+    );
+  });
+
+  it('warns if getDerivedStateFromError is not static', () => {
+    class Foo extends React.Component {
+      getDerivedStateFromError() {
+        return {};
+      }
+      render() {
+        return <div />;
+      }
+    }
+    expect(() => ReactDOM.render(<Foo foo="foo" />, container)).toWarnDev(
+      'Foo: getDerivedStateFromError() is defined as an instance method ' +
+        'and will be ignored. Instead, declare it as a static method.',
+      {withoutStack: true},
+    );
+  });
+
+  it('warns if getSnapshotBeforeUpdate is static', () => {
+    class Foo extends React.Component {
+      static getSnapshotBeforeUpdate() {}
+      render() {
+        return <div />;
+      }
+    }
+    expect(() => ReactDOM.render(<Foo foo="foo" />, container)).toWarnDev(
+      'Foo: getSnapshotBeforeUpdate() is defined as a static method ' +
+        'and will be ignored. Instead, declare it as an instance method.',
+      {withoutStack: true},
+    );
+  });
+
+  it('warns if state not initialized before static getDerivedStateFromProps', () => {
+    class Foo extends React.Component {
+      static getDerivedStateFromProps(nextProps, prevState) {
+        return {
+          foo: nextProps.foo,
+          bar: 'bar',
+        };
+      }
+      render() {
+        return <div className={`${this.state.foo} ${this.state.bar}`} />;
+      }
+    }
+    expect(() => ReactDOM.render(<Foo foo="foo" />, container)).toWarnDev(
+      '`Foo` uses `getDerivedStateFromProps` but its initial state is ' +
+        'undefined. This is not recommended. Instead, define the initial state by ' +
+        'assigning an object to `this.state` in the constructor of `Foo`. ' +
+        'This ensures that `getDerivedStateFromProps` arguments have a consistent shape.',
+      {withoutStack: true},
+    );
+  });
+
+  it('updates initial state with values returned by static getDerivedStateFromProps', () => {
+    class Foo extends React.Component {
+      state = {
+        foo: 'foo',
+        bar: 'bar',
+      };
+      static getDerivedStateFromProps(nextProps, prevState) {
+        return {
+          foo: `not-${prevState.foo}`,
+        };
+      }
+      render() {
+        return <div className={`${this.state.foo} ${this.state.bar}`} />;
+      }
+    }
+    test(<Foo />, 'DIV', 'not-foo bar');
+  });
+
+  it('renders updated state with values returned by static getDerivedStateFromProps', () => {
+    class Foo extends React.Component {
+      state = {
+        value: 'initial',
+      };
+      static getDerivedStateFromProps(nextProps, prevState) {
+        if (nextProps.update) {
+          return {
+            value: 'updated',
+          };
+        }
+        return null;
+      }
+      render() {
+        return <div className={this.state.value} />;
+      }
+    }
+    test(<Foo update={false} />, 'DIV', 'initial');
+    test(<Foo update={true} />, 'DIV', 'updated');
   });
 
   it('renders based on context in the constructor', () => {
@@ -120,7 +244,7 @@ describe('ReactES6Class', () => {
         this.state = {tag: context.tag, className: this.context.className};
       }
       render() {
-        var Tag = this.state.tag;
+        const Tag = this.state.tag;
         return <Tag className={this.state.className} />;
       }
     }
@@ -145,13 +269,13 @@ describe('ReactES6Class', () => {
   });
 
   it('renders only once when setting state in componentWillMount', () => {
-    var renderCount = 0;
+    let renderCount = 0;
     class Foo extends React.Component {
       constructor(props) {
         super(props);
         this.state = {bar: props.initialValue};
       }
-      componentWillMount() {
+      UNSAFE_componentWillMount() {
         this.setState({bar: 'bar'});
       }
       render() {
@@ -164,7 +288,6 @@ describe('ReactES6Class', () => {
   });
 
   it('should warn with non-object in the initial state property', () => {
-    spyOnDev(console, 'error');
     [['an array'], 'a string', 1234].forEach(function(state) {
       class Foo extends React.Component {
         constructor() {
@@ -175,14 +298,10 @@ describe('ReactES6Class', () => {
           return <span />;
         }
       }
-      test(<Foo />, 'SPAN', '');
-      if (__DEV__) {
-        expect(console.error.calls.count()).toBe(1);
-        expect(console.error.calls.argsFor(0)[0]).toContain(
-          'Foo.state: must be set to an object or null',
-        );
-        console.error.calls.reset();
-      }
+      expect(() => test(<Foo />, 'SPAN', '')).toWarnDev(
+        'Foo.state: must be set to an object or null',
+        {withoutStack: true},
+      );
     });
   });
 
@@ -261,26 +380,26 @@ describe('ReactES6Class', () => {
   });
 
   it('will call all the normal life cycle methods', () => {
-    var lifeCycles = [];
+    let lifeCycles = [];
     class Foo extends React.Component {
       constructor() {
         super();
         this.state = {};
       }
-      componentWillMount() {
+      UNSAFE_componentWillMount() {
         lifeCycles.push('will-mount');
       }
       componentDidMount() {
         lifeCycles.push('did-mount');
       }
-      componentWillReceiveProps(nextProps) {
+      UNSAFE_componentWillReceiveProps(nextProps) {
         lifeCycles.push('receive-props', nextProps);
       }
       shouldComponentUpdate(nextProps, nextState) {
         lifeCycles.push('should-update', nextProps, nextState);
         return true;
       }
-      componentWillUpdate(nextProps, nextState) {
+      UNSAFE_componentWillUpdate(nextProps, nextState) {
         lifeCycles.push('will-update', nextProps, nextState);
       }
       componentDidUpdate(prevProps, prevState) {
@@ -310,13 +429,13 @@ describe('ReactES6Class', () => {
   });
 
   it('warns when classic properties are defined on the instance, but does not invoke them.', () => {
-    spyOnDev(console, 'error');
-    var getDefaultPropsWasCalled = false;
-    var getInitialStateWasCalled = false;
+    let getDefaultPropsWasCalled = false;
+    let getInitialStateWasCalled = false;
     class Foo extends React.Component {
       constructor() {
         super();
         this.contextTypes = {};
+        this.contextType = {};
         this.propTypes = {};
       }
       getInitialState() {
@@ -331,28 +450,22 @@ describe('ReactES6Class', () => {
         return <span className="foo" />;
       }
     }
-    test(<Foo />, 'SPAN', 'foo');
+
+    expect(() => test(<Foo />, 'SPAN', 'foo')).toWarnDev(
+      [
+        'getInitialState was defined on Foo, a plain JavaScript class.',
+        'getDefaultProps was defined on Foo, a plain JavaScript class.',
+        'propTypes was defined as an instance property on Foo.',
+        'contextType was defined as an instance property on Foo.',
+        'contextTypes was defined as an instance property on Foo.',
+      ],
+      {withoutStack: true},
+    );
     expect(getInitialStateWasCalled).toBe(false);
     expect(getDefaultPropsWasCalled).toBe(false);
-    if (__DEV__) {
-      expect(console.error.calls.count()).toBe(4);
-      expect(console.error.calls.argsFor(0)[0]).toContain(
-        'getInitialState was defined on Foo, a plain JavaScript class.',
-      );
-      expect(console.error.calls.argsFor(1)[0]).toContain(
-        'getDefaultProps was defined on Foo, a plain JavaScript class.',
-      );
-      expect(console.error.calls.argsFor(2)[0]).toContain(
-        'propTypes was defined as an instance property on Foo.',
-      );
-      expect(console.error.calls.argsFor(3)[0]).toContain(
-        'contextTypes was defined as an instance property on Foo.',
-      );
-    }
   });
 
   it('does not warn about getInitialState() on class components if state is also defined.', () => {
-    spyOnDev(console, 'error');
     class Foo extends React.Component {
       state = this.getInitialState();
       getInitialState() {
@@ -363,14 +476,9 @@ describe('ReactES6Class', () => {
       }
     }
     test(<Foo />, 'SPAN', 'foo');
-    if (__DEV__) {
-      expect(console.error.calls.count()).toBe(0);
-    }
   });
 
   it('should warn when misspelling shouldComponentUpdate', () => {
-    spyOnDev(console, 'error');
-
     class NamedComponent extends React.Component {
       componentShouldUpdate() {
         return false;
@@ -379,22 +487,17 @@ describe('ReactES6Class', () => {
         return <span className="foo" />;
       }
     }
-    test(<NamedComponent />, 'SPAN', 'foo');
 
-    if (__DEV__) {
-      expect(console.error.calls.count()).toBe(1);
-      expect(console.error.calls.argsFor(0)[0]).toBe(
-        'Warning: ' +
-          'NamedComponent has a method called componentShouldUpdate(). Did you ' +
-          'mean shouldComponentUpdate()? The name is phrased as a question ' +
-          'because the function is expected to return a value.',
-      );
-    }
+    expect(() => test(<NamedComponent />, 'SPAN', 'foo')).toWarnDev(
+      'Warning: ' +
+        'NamedComponent has a method called componentShouldUpdate(). Did you ' +
+        'mean shouldComponentUpdate()? The name is phrased as a question ' +
+        'because the function is expected to return a value.',
+      {withoutStack: true},
+    );
   });
 
   it('should warn when misspelling componentWillReceiveProps', () => {
-    spyOnDev(console, 'error');
-
     class NamedComponent extends React.Component {
       componentWillRecieveProps() {
         return false;
@@ -403,32 +506,47 @@ describe('ReactES6Class', () => {
         return <span className="foo" />;
       }
     }
-    test(<NamedComponent />, 'SPAN', 'foo');
 
-    if (__DEV__) {
-      expect(console.error.calls.count()).toBe(1);
-      expect(console.error.calls.argsFor(0)[0]).toBe(
-        'Warning: ' +
-          'NamedComponent has a method called componentWillRecieveProps(). Did ' +
-          'you mean componentWillReceiveProps()?',
-      );
+    expect(() => test(<NamedComponent />, 'SPAN', 'foo')).toWarnDev(
+      'Warning: ' +
+        'NamedComponent has a method called componentWillRecieveProps(). Did ' +
+        'you mean componentWillReceiveProps()?',
+      {withoutStack: true},
+    );
+  });
+
+  it('should warn when misspelling UNSAFE_componentWillReceiveProps', () => {
+    class NamedComponent extends React.Component {
+      UNSAFE_componentWillRecieveProps() {
+        return false;
+      }
+      render() {
+        return <span className="foo" />;
+      }
     }
+
+    expect(() => test(<NamedComponent />, 'SPAN', 'foo')).toWarnDev(
+      'Warning: ' +
+        'NamedComponent has a method called UNSAFE_componentWillRecieveProps(). ' +
+        'Did you mean UNSAFE_componentWillReceiveProps()?',
+      {withoutStack: true},
+    );
   });
 
   it('should throw AND warn when trying to access classic APIs', () => {
-    spyOnDev(console, 'warn');
-    var instance = test(<Inner name="foo" />, 'DIV', 'foo');
-    expect(() => instance.replaceState({})).toThrow();
-    expect(() => instance.isMounted()).toThrow();
-    if (__DEV__) {
-      expect(console.warn.calls.count()).toBe(2);
-      expect(console.warn.calls.argsFor(0)[0]).toContain(
-        'replaceState(...) is deprecated in plain JavaScript React classes',
-      );
-      expect(console.warn.calls.argsFor(1)[0]).toContain(
-        'isMounted(...) is deprecated in plain JavaScript React classes',
-      );
-    }
+    const instance = test(<Inner name="foo" />, 'DIV', 'foo');
+    expect(() =>
+      expect(() => instance.replaceState({})).toThrow(),
+    ).toLowPriorityWarnDev(
+      'replaceState(...) is deprecated in plain JavaScript React classes',
+      {withoutStack: true},
+    );
+    expect(() =>
+      expect(() => instance.isMounted()).toThrow(),
+    ).toLowPriorityWarnDev(
+      'isMounted(...) is deprecated in plain JavaScript React classes',
+      {withoutStack: true},
+    );
   });
 
   it('supports this.context passed via getChildContext', () => {
@@ -456,13 +574,13 @@ describe('ReactES6Class', () => {
         return <Inner name="foo" ref="inner" />;
       }
     }
-    var instance = test(<Foo />, 'DIV', 'foo');
+    const instance = test(<Foo />, 'DIV', 'foo');
     expect(instance.refs.inner.getName()).toBe('foo');
   });
 
   it('supports drilling through to the DOM using findDOMNode', () => {
-    var instance = test(<Inner name="foo" />, 'DIV', 'foo');
-    var node = ReactDOM.findDOMNode(instance);
+    const instance = test(<Inner name="foo" />, 'DIV', 'foo');
+    const node = ReactDOM.findDOMNode(instance);
     expect(node).toBe(container.firstChild);
   });
 });
